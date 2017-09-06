@@ -3,6 +3,7 @@
 
 #define DIM 2
 
+float target_function(const std::vector<float> &x, std::vector<float> &grad, void * data);
 /*
  * @brief Реализация NLopt. 
  *
@@ -45,7 +46,7 @@ float NLopt (std::vector<float> &x, float eps)
     return result;
 }
 
-float target_function(const std::vector<float> &x, std::vector<float> &grad, void * data)
+double target_function(const std::vector<double> &x, std::vector<double> &grad, void * data)
 {
     float sum = 0;
 
