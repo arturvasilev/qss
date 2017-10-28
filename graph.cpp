@@ -9,6 +9,7 @@ graph::graph(uint ports, uint beamsplitters, uint directCouplers, uint waveplate
 	bs = beamsplitters;
 	dc = directCouplers;
 	w = waveplates;
+	q = 2*(bs+dc+w);
 	comb.resize(bs + dc + w);
 	
 	//Инициализация comb
@@ -22,7 +23,7 @@ graph::graph(uint ports, uint beamsplitters, uint directCouplers, uint waveplate
 
 	targetMatrix.resize(p, std::vector<std::complex<double> >(p, 0.0));
 
-	traj.resize(p, std::vector<std::set<std::set<uint> > >(p));
+	traj.resize(p, std::vector<std::set<std::vector<uint> > >(p));
 
 	translate.resize(4, std::vector<std::vector<uint> >(4, std::vector<uint>(4)));
 
@@ -70,7 +71,7 @@ const std::string graph::print(void)
 	return tmp.str();
 } 
 
-void graph::set_edges(const std::vector<uint> _edges)
+void graph::set_edges(const std::vector<uint> &_edges)
 {
 	edges = _edges;
 }
@@ -82,19 +83,17 @@ void graph::set_variables(const std::vector<double> &_var)
 
 double graph::get_deviation()
 {
-	if(!sift()) return __DBL_MAX__;
-
 	double deviation = 0.;
 
 	for(size_t i = 0; i < p; ++i)
 	for(size_t j = 0; j < p; ++j)
 	{
-		std::set<std::set<uint> > &t = traj[i][j];
+		std::set<std::vector<uint> > &t = traj[i][j];
 		
 		if(!t.empty())
 		for(auto it = t.begin(); it != t.end(); ++it)
 		deviation += abs(
-			traj_to_ampl(*it);
+			traj_to_ampl(*it)
 		);
 	}
 
@@ -108,8 +107,12 @@ void graph::set_target_matrix(const cmatrix_t &_tM)
 
 void graph::make_matrix_traj()
 {
-	for(size_t i = 2*p; i < edges.size(); ++i)
-	paths(i, *this, this->traj);
+	for(size_t i = 0; i < p; ++i)
+	for(size_t j = 0; j < p; ++j)
+	traj[i][j].clear();
+
+	for(size_t i = edges.size() - p; i < edges.size(); ++i)
+	paths(i, traj);
 }
 
 double graph::get_deviation(const std::vector<double> &x, std::vector<double> &grad, void* f_data)
@@ -120,20 +123,22 @@ double graph::get_deviation(const std::vector<double> &x, std::vector<double> &g
 	return gp->get_deviation();
 }
 
-void graph::paths(uint start, graph &g, traj_t &matrix, std::vector<uint> way)
+void graph::paths(uint start, traj_t &matrix, std::vector<uint> way)
 {
 	way.push_back(start);
-	way.push_back(g.edges[start]);
+	way.push_back(edges[start]);
 
-	if (g.edges[start] < g.q * 2) //Если наш порт смотрит в однокубитовый оператор
+	if (edges[start] < edges.size() - p) //Если наш порт смотрит в однокубитовый оператор
 	{
-		paths((g.edges[start] / 2) * 2, g, matrix, way);
-		paths((g.edges[start] / 2) * 2 + 1, g, matrix, way);
+		paths((edges[start] / 2) * 2, matrix, way);
+		paths((edges[start] / 2) * 2 + 1, matrix, way);
 	}
 	else//Если наш порт смотрит в порт вывода
 	{
+		way.push_back(edges[start]);
+
 		//Запишем получившуюся траекторию в массив
-		matrix[way.front() - g.q * 2][way.back() - g.q * 2].insert(way);
+		matrix[way.front() - q][way.back() - q].insert(way);
 	}
 };
 
@@ -147,10 +152,10 @@ bool graph::sift(const smatrix_t &_sM)
 	for(size_t i = 0; i < p; ++i)
 	for(size_t j = 0; j < p; ++j)
 	{
-		std::vector<uint> a = translate[i][j];
+		std::vector<uint> &a = translate[i][j];
 		if(
-			traj[a[0]][a[1]].empty() || traj[a[2]][a[3]].empty() &&
-			traj[a[0]][a[3]].empty() || traj[a[2]][a[1]].empty()
+			(traj[a[0]][a[1]].empty() || traj[a[2]][a[3]].empty()) &&
+			(traj[a[0]][a[3]].empty() || traj[a[2]][a[1]].empty())
 		) {sift_ok = false; break;}
 	}
 
@@ -159,38 +164,39 @@ bool graph::sift(const smatrix_t &_sM)
 
 std::complex<double> graph::get_func(uint oper_num, uint in, uint out)
 {
-	switch (g.comb[oper_num])
+	using namespace std;
+	switch (comb[oper_num])
 	{
 	case beamsplitter:
 	{
 		double *tmp = var_num(oper_num);
-		if (in == 0 && out == 0) return sqrt(*tmp);}; else
-		if (in == 0 && out == 1) return sqrt(complex<double>(1,0) - *tmp);}; else
-		if (in == 1 && out == 0) return sqrt(complex<double>(1,0) - *tmp);}; else
-		if (in == 1 && out == 1) return -sqrt(*tmp);};
+		if (in == 0 && out == 0) return sqrt(*tmp); else
+		if (in == 0 && out == 1) return sqrt(complex<double>(1,0) - *tmp); else
+		if (in == 1 && out == 0) return sqrt(complex<double>(1,0) - *tmp); else
+		if (in == 1 && out == 1) return -sqrt(*tmp);
 		break;
 	}
 	case directCoupler:
 	{
-		double *tmp = g.var_num(oper_num);
+		double *tmp = var_num(oper_num);
 
 		if (in == 0 && out == 0) 
 		return 
-			sqrt(*tmp);}; else
+			sqrt(*tmp); else
 		if (in == 0 && out == 1) 
 		return 
-			sqrt((complex<double>)1 - *tmp)*exp(complex<double>(0, M_PI / 2));}; else
+			sqrt((complex<double>)1 - *tmp)*exp(complex<double>(0, M_PI / 2)); else
 		if (in == 1 && out == 0) 
 		return
-			sqrt((complex<double>)1 - *tmp)*exp(complex<double>(0, M_PI / 2));}; else
+			sqrt((complex<double>)1 - *tmp)*exp(complex<double>(0, M_PI / 2)); else
 		if (in == 1 && out == 1)
 		return
-			sqrt(*tmp);};
+			sqrt(*tmp);
 		break;
 	}
 	case waveplate:
 	{
-		double *phi = g.var_num(oper_num);
+		double *phi = var_num(oper_num);
 		double *alpha = (phi + 1);
 
 		if (in == 0 && out == 0) 
@@ -230,19 +236,18 @@ graph::operators_types graph::oper_type(uint var_num)
 	return comb[oper_num];
 }
 
-graph& operator= (const graph &other)
+graph& graph::operator= (const graph &other)
 {
-	if (this == &other) return *this;
+	if(this == &other) return *this;
 	graph(other.p, other.bs, other.dc, other.w);
 	edges = other.edges;
 	var = other.var;
-	busy = other.busy;
 	comb = other.comb;
 	
 	return *this; 
 }
 
-std::complex<double> traj_to_ampl(const std::set<uint> &_traj)
+std::complex<double> graph::traj_to_ampl(const std::vector<uint> &_traj)
 {
 	std::complex<double> ret = 1.0;
 

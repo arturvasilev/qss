@@ -7,6 +7,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmic -O3 -qopenmp -std=c++11")
 # set(SINK_LD_LIBRARY_PATH /opt/intel/lib/mic)
 
 set(SOURCES graph.cpp)
-include_directories(/usr/include)
+# include_directories(/usr/include)
 
-add_executable(sifter sifter.cpp)
+add_executable(sifter sifter.cpp ${SOURCES})

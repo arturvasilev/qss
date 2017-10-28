@@ -14,12 +14,15 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <unistd.h>
+#include <stdlib.h>
 
 #include <omp.h>
 
 #include "graph.hpp"
 
-#define DEBUG_LOG   2
+#define SIFTER_DEBUG_LOG  0
+u_int64_t   graphs_generated = 0;
 
 //! Находит факториал _top!. Если указан _bot, то вычисляется факториал _top!/_bot!.
 uint fact(const uint _top, const uint _bot = 1);
@@ -40,6 +43,21 @@ void make_templates_graphs(
     std::vector<std::pair<uint, bool> > _g, 
     std::vector<std::vector<uint> > &answer);
 
+//Данная рекурсия может получить на входе пустой граф, или его заготовку
+//Возвращает наилучший граф из всех возможных для данной заготовки
+//me - узел, с которого мы сейчас стартуем
+//_e    Заготовка графа
+//_sP   Порт ввода, от которого все последующие порты ввода (включая _sP) инициализированы
+//_fP   Число портов ввода-вывода
+void print_sifted_graphs(
+    uint me, 
+    std::vector<uint> _e, 
+    std::vector<bool> _busy,
+    const uint _sP, 
+    const uint _fP,
+    graph &_g,
+    const graph::smatrix_t &_sM);
+
 int main(int argc, char ** argv)
 {
     using namespace std;
@@ -55,7 +73,11 @@ int main(int argc, char ** argv)
     uint dc = stoi(string(argv[3]));
     uint w = stoi(string(argv[4]));
 
-    #if DEBUG_LOG >= 1
+    cerr << "There must be" << endl;
+    const u_int64_t graphs_to_generate = fact(p) * pow(p*(p-1), bs+dc+w);
+    cerr << '\t' << float(graphs_to_generate) << " graphs" << endl;
+
+    #if SIFTER_DEBUG_LOG >= 1
     cout << "p = " << p << endl
         << "bs = " << bs << endl
         << "dc = " << dc << endl
@@ -80,7 +102,7 @@ int main(int argc, char ** argv)
     for(size_t col = 0; col < p; col++)
         sM[col][row] = bool(stoi(string(argv[5 + row*p + col])));
 
-    #if DEBUG_LOG >= 1
+    #if SIFTER_DEBUG_LOG >= 1
     cout << endl << "--Sift matrix--" << endl;
     for(size_t i = 0; i < p; ++i)
     {
@@ -91,40 +113,44 @@ int main(int argc, char ** argv)
     }
     #endif
 
+    #if SIFTER_DEBUG_LOG >= 3
+    omp_set_num_threads(1);
+    #endif
+
     int ompThreads;
     #pragma omp parallel
     if(omp_get_thread_num() == 0) ompThreads = omp_get_num_threads();
 
-    #if DEBUG_LOG >= 1
+    #if SIFTER_DEBUG_LOG >= 1
     cout << "Number of threads: " << ompThreads << endl;
     #endif
 
-    set<vector<uint> > templates;
+    vector<vector<uint> > templates;
     // Создание заготовок
+    uint startPort = p + 1; //!< Порт ввода
     {
         uint T; //!< Число заготовок
-        uint i = p + 1; //!< Порт ввода
         do
         {
-            --i;
-            T = fact(p + 2*(bs+dc+w), 2*(bs+dc+w) + i);
-        } while(T < 10 * ompThreads && i != 0);
+            --startPort;
+            T = fact(p + 2*(bs+dc+w), 2*(bs+dc+w) + startPort);
+        } while(T < 10 * ompThreads && startPort != 0);
 
-        #if DEBUG_LOG >= 1
-        cout << "Templates to create (" << i << " to " << p << "): " << T << endl;
+        #if SIFTER_DEBUG_LOG >= 1
+        cout << "Templates to create (" << startPort << " to " << p << "): " << T << endl;
         #endif
 
-        vector<vector<uint> > templates;
+        templates.reserve(T);
         vector<pair<uint, bool> > g(p + 2*(bs+dc+w), pair<uint, bool>(0, false));
-        make_templates_graphs(i, p, g, templates);
+        make_templates_graphs(startPort, p, g, templates);
 
-        #if DEBUG_LOG >= 1
+        #if SIFTER_DEBUG_LOG >= 1
         cout << "Templates quantity: " << templates.size() << endl;
         #endif
 
-        #if DEBUG_LOG >= 2
-        cout << "Ten templates: " << endl;
+        #if SIFTER_DEBUG_LOG >= 2
         const size_t templShow = 10;
+        cout << templShow << " templates: " << endl;
         for(size_t i = 0; i < templShow; ++i)
         {
             const size_t num = i * templates.size() / templShow;
@@ -136,22 +162,33 @@ int main(int argc, char ** argv)
         #endif
     }
 
+    cout << p << '\t' << bs << '\t' << dc << '\t' << w << endl;
     #pragma omp parallel for schedule(guided)
-    for(uint templ = 0; templ < templates.size(); ++templ)
+    for(size_t templ = 0; templ < templates.size(); ++templ)
     {
+        //! Заготовка
+        vector<uint> &T = templates[templ];
         graph g(p, bs, dc, w);
-        g.set_sift_matrix(sM);
-
-
-        g.set_edges(templNum_to_edges(templ));
         
-    //     if(g.sifting())
-    //     {
-    //         vector<uint> we = g.get_edges();
-    //         #pragma omp atomic
-    //         cout.write((char*)we, we.size() * sizeof(we[0]));
-    //     }
+        vector<uint> e(T);
+
+        vector<bool> busy(T.size(), false);
+        for(size_t i = 2*(bs+dc+w)+startPort; i < T.size(); ++i)
+        busy[e[i]] = true;
+
+        print_sifted_graphs(0, e, busy, startPort, p, g, sM);
+
+        #pragma omp critical(stderr)
+        {
+            static uint toShow = 50;
+            static uint processed = 0;
+            if(++processed % (templates.size()/toShow) == 0)
+            cerr << round(100 * float(processed) / templates.size()) << "% templates (" 
+                << round(100 * float(graphs_generated)/graphs_to_generate) << "% graphs generated)" << endl;
+        }
     }
+
+    cerr << "Generated graphs: " << graphs_generated << endl;
 
     return 0;
 }
@@ -191,4 +228,89 @@ void make_templates_graphs(
     }
 }
 
+void print_sifted_graphs(
+    uint me, 
+    std::vector<uint> _e, 
+    std::vector<bool> _busy,
+    const uint _sP, 
+    const uint _fP,
+    graph &_g,
+    const graph::smatrix_t &_sM)
+{
+    #if SIFTER_DEBUG_LOG >= 3
+    #pragma omp critical(stdout)
+    {
+        std::cout << "templ #" << omp_get_thread_num() << " recursive: ";
+        for(auto i : _e)
+        std::cout << i << '\t';
+        std::cout << std::endl;
+    }
+    #endif
 
+    const std::vector<bool> BUSY_TRUE(_busy.size(), true);
+    if(_busy == BUSY_TRUE)
+    {
+        // В этой ветке мы уже прошлись по всем исходящим вершинам графа.
+        // Теперь в _e полностью запоненный массив, представляющий собой направленный граф.
+        #pragma omp atomic
+        ++graphs_generated;        
+
+        _g.set_edges(_e);
+        
+        #if SIFTER_DEBUG_LOG >= 3
+        #pragma omp critical(stdout)
+        {
+            std::cout << "thread #" << omp_get_thread_num() << " try: ";
+            for(auto i : _e)
+            std::cout << i << '\t';
+            std::cout << std::endl;
+        }
+        #endif
+
+        if(_g.sift(_sM))
+        {
+            #pragma omp critical(stdout)
+            {
+                for(auto i : _e)
+                std::cout << i << '\t';
+                std::cout << std::endl;
+            }
+
+        }
+    }
+    else
+	//Необходимо достроить направленный граф g
+	if (me < (_e.size() - _fP))//Если мы сейчас стартуем из однокубитового оператора
+	{
+        //! Узел, куда смотрит порт выхода однокубитового оператора
+		for (uint i = (me / 2) * 2 + 2; i < _e.size(); i++)
+		{
+			if (!_busy[i])
+			{
+				_busy[i] = true;
+				_e[me] = i;
+				print_sifted_graphs(me + 1, _e, _busy, _sP, _fP, _g, _sM);
+				_busy[i] = false;
+			}
+		}
+	}
+	else//В этой точке мы стартуем из порта ввода
+    {
+        if (me < (_e.size() - _sP))
+        //Порт ввода может смотреть в любой узел графа
+        for (uint i = 0; i < _e.size(); i++)
+        {
+            if (!_busy[i])
+            {
+                _busy[i] = true;
+                _e[me] = i;
+                print_sifted_graphs(me + 1, _e, _busy, _sP, _fP, _g, _sM);
+                _busy[i] = false;
+            }
+        }
+        else
+        {
+            
+        }//Конец обработки сгенерированного направленного графа}
+    }
+}

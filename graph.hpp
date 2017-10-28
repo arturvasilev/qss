@@ -14,7 +14,7 @@ public:
 	typedef std::vector<std::vector<std::complex<double> > > cmatrix_t;
 
 	//! Тип матрицы траекторий
-	typedef std::vector<std::vector<std::set<std::set<uint> > > > traj_t;
+	typedef std::vector<std::vector<std::set<std::vector<uint> > > > traj_t;
 
 	//! Тип матрицы для просеивания
 	typedef std::vector<std::vector<bool> > smatrix_t;
@@ -37,7 +37,7 @@ public:
 	graph(uint ports = 0, uint beamsplitters = 0, uint directCouplers = 0, uint waveplates = 0);
 
 	//! Установить рёбра графа
-	void set_edges(const std::vector<uint> _edges);
+	void set_edges(const std::vector<uint> &_edges);
 
 	/* 
 	 * Вернуть эффективность текущего графа относительно целевой матрицы
@@ -98,7 +98,8 @@ protected:
 	uint dc;    //!< (direction couplers) - число направленных светоделителей
 	uint w;     //!< (waveplates) - число волновых пластинок (фазовращателей)
 	
-
+	uint q;		//!< Число узлов для однокубитовых операторов
+	
 	std::vector<double> var;//Внутренние параметры графа
 
 	//! Целевая матрица
@@ -149,16 +150,15 @@ protected:
 	graph& operator= (const graph &other);
 
 	//! Рекурсивно находит все возможные пути
-	static void paths(
+	void paths(
 		uint start, 
-		graph &g, 
 		traj_t &matrix, 
 		std::vector<uint> way = std::vector<uint>());	
 
 	/*
 	 * @brief Конвертирует тректорию в комплексную амплитуду
 	 */
-	std::complex<double> traj_to_ampl(const std::set<uint> &_traj);
+	std::complex<double> traj_to_ampl(const std::vector<uint> &_traj);
 };
 
 #endif //! GRAPH_HPP
