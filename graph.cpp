@@ -74,6 +74,7 @@ const std::string graph::print(void)
 void graph::set_edges(const std::vector<uint> &_edges)
 {
 	edges = _edges;
+	make_matrix_traj();
 }
 
 void graph::set_variables(const std::vector<double> &_var)
@@ -81,23 +82,76 @@ void graph::set_variables(const std::vector<double> &_var)
 	var= _var;
 }
 
+std::vector<double> graph::get_variables()
+{
+	return var;
+}
+
+std::vector<uint> graph::get_edges()
+{
+	return edges;
+}
+
 double graph::get_deviation()
 {
 	double deviation = 0.;
 
+	cmatrix_t MTruth = get_matrix_truth();
+
 	for(size_t i = 0; i < p; ++i)
 	for(size_t j = 0; j < p; ++j)
 	{
-		std::set<std::vector<uint> > &t = traj[i][j];
-		
-		if(!t.empty())
-		for(auto it = t.begin(); it != t.end(); ++it)
 		deviation += abs(
-			traj_to_ampl(*it)
+			MTruth[i][j] - targetMatrix[i][j]
 		);
 	}
 
 	return deviation;
+}
+
+graph::cmatrix_t graph::get_matrix_truth()
+{
+	cmatrix_t ret(p, std::vector<std::complex<double> >(p));
+
+	for(size_t i = 0; i < p; ++i)
+	for(size_t j = 0; j < p; ++j)
+	{
+		// Ячейка трансляционной матрицы
+		std::vector<uint> a = translate[i][j];
+
+		//! T[i][j] = A*B + C*D
+		std::complex<double> A, B, C, D;
+		
+		{
+			std::set<std::vector<uint> > t = traj[a[0]][a[1]];
+			if(!t.empty())
+			for(auto it = t.begin(); it != t.end(); ++it)
+			A += traj_to_ampl(*it);
+		}
+		{
+			std::set<std::vector<uint> > &t = traj[a[2]][a[3]];
+			if(!t.empty())
+			for(auto it = t.begin(); it != t.end(); ++it)
+			B += traj_to_ampl(*it);
+		}
+
+		{
+			std::set<std::vector<uint> > &t = traj[a[0]][a[3]];
+			if(!t.empty())
+			for(auto it = t.begin(); it != t.end(); ++it)
+			C += traj_to_ampl(*it);
+		}
+		{
+			std::set<std::vector<uint> > &t = traj[a[2]][a[1]];
+			if(!t.empty())
+			for(auto it = t.begin(); it != t.end(); ++it)
+			D += traj_to_ampl(*it);
+		}
+		
+		ret[i][j] = A*B + C*D;
+	}
+
+	return ret;
 }
 
 void graph::set_target_matrix(const cmatrix_t &_tM)
@@ -115,14 +169,6 @@ void graph::make_matrix_traj()
 	paths(i, traj);
 }
 
-double graph::get_deviation(const std::vector<double> &x, std::vector<double> &grad, void* f_data)
-{
-	graph * gp = reinterpret_cast<graph*>(f_data);
-	gp->var = x;
-
-	return gp->get_deviation();
-}
-
 void graph::paths(uint start, traj_t &matrix, std::vector<uint> way)
 {
 	way.push_back(start);
@@ -135,8 +181,6 @@ void graph::paths(uint start, traj_t &matrix, std::vector<uint> way)
 	}
 	else//Если наш порт смотрит в порт вывода
 	{
-		way.push_back(edges[start]);
-
 		//Запишем получившуюся траекторию в массив
 		matrix[way.front() - q][way.back() - q].insert(way);
 	}
@@ -221,6 +265,22 @@ std::complex<double> graph::get_func(uint oper_num, uint in, uint out)
 	}
 }
 
+double* graph::var_num(uint oper_num)
+{
+	//Вычислим номер необходимого оператора из массива var[]
+	uint var_num = 0;
+
+	for (uint i = 0; i < oper_num; i++)
+		switch (comb[i])
+		{
+		case beamsplitter:
+		case directCoupler: var_num++; break;
+		case waveplate: var_num += 2; break;
+		};
+
+	return &(var[var_num]);
+};
+
 graph::operators_types graph::oper_type(uint var_num)
 {
 	uint oper_num = 0;
@@ -247,13 +307,19 @@ graph& graph::operator= (const graph &other)
 	return *this; 
 }
 
-std::complex<double> graph::traj_to_ampl(const std::vector<uint> &_traj)
+std::complex<double> graph::traj_to_ampl(const std::vector<uint> _traj)
 {
 	std::complex<double> ret = 1.0;
 
+	using namespace std;
+	// cout << "\t\ttraj_to_ampl" << endl;
+	// cout << "\t\ttraj: ";
+	// for(auto i : _traj) cout << i << '-';
+	
 	for(size_t i = 1; i < _traj.size() - 1; i += 2)
 	ret *= get_func(_traj[i] / 2, _traj[i] % 2, _traj[i+1] % 2);
 
+	// cout << ret << endl;
 	return ret;
 }
 

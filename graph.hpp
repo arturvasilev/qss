@@ -6,6 +6,7 @@
 #include <complex>
 #include <string>
 #include <stdlib.h>
+#include <iostream>
 
 class graph {
 public:
@@ -39,6 +40,9 @@ public:
 	//! Установить рёбра графа
 	void set_edges(const std::vector<uint> &_edges);
 
+	//! Вернуть рёбра графа
+	std::vector<uint> get_edges();
+
 	/* 
 	 * Вернуть эффективность текущего графа относительно целевой матрицы
 	 * 
@@ -47,11 +51,14 @@ public:
 	 * @return Текущее значение эффективности
 	 */
 	double get_deviation();
-	static double get_deviation(
-		const std::vector<double> &x, 
-		std::vector<double> &grad, 
-		void* f_data);
 	
+	/*
+	 * Возвращает матрицу истинности для текущего графа и текущих переменных
+	 * 
+	 * @return Матрица истинности в комплексных переменных
+	 */
+	cmatrix_t get_matrix_truth();
+
 	/*
 	 * @brief Устанавливает целевую матрицу истинности
 	 * 
@@ -68,7 +75,8 @@ public:
 	 * @param _var		Новые внутренние параметры
 	 */
 	void set_variables(const std::vector<double> &_var);
-
+	std::vector<double> get_variables();
+	
 	/*
 	 * @brief Функция для просеивания графа на основе матрицы траекторий.
 	 * 	Все ненулевые элементы матрицы истинности должны иметь хоть одну траекторию.
@@ -79,6 +87,8 @@ public:
 	 */
 	bool sift(const smatrix_t &_sM);
 
+	graph& operator= (const graph &other);
+	
 protected:
 
 	//! Направленный граф
@@ -121,19 +131,7 @@ protected:
      *
      * @return Указатель на переменную из массива var[]
 	 */ 
-	double* var_num(uint oper_num)
-	{
-		//Вычислим номер необходимого оператора из массива var[]
-		uint var_num = 0;
-		for (uint i = 0; i < oper_num; i++)
-			switch (comb[i])
-			{
-			case beamsplitter:
-			case directCoupler: var_num++; break;
-			case waveplate: var_num += 2; break;
-			};
-		return &(var[var_num]);
-	};
+	double* var_num(uint oper_num);
 
 	/*
 	 * @param oper_num		Порядковый номер оператора (находится из рёбер графа)
@@ -147,8 +145,6 @@ protected:
 	//Определяет какому типу однокубитового оператора принадлежит переменная с номером var_num
 	operators_types oper_type(uint var_num);
 
-	graph& operator= (const graph &other);
-
 	//! Рекурсивно находит все возможные пути
 	void paths(
 		uint start, 
@@ -158,7 +154,7 @@ protected:
 	/*
 	 * @brief Конвертирует тректорию в комплексную амплитуду
 	 */
-	std::complex<double> traj_to_ampl(const std::vector<uint> &_traj);
+	std::complex<double> traj_to_ampl(const std::vector<uint> _traj);
 };
 
 #endif //! GRAPH_HPP

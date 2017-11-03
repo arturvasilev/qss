@@ -56,7 +56,8 @@ void print_sifted_graphs(
     const uint _sP, 
     const uint _fP,
     graph &_g,
-    const graph::smatrix_t &_sM);
+    const graph::smatrix_t &_sM
+);
 
 int main(int argc, char ** argv)
 {
