@@ -109,6 +109,23 @@ double graph::get_deviation()
 	return deviation;
 }
 
+graph::cmatrix_t graph::get_matrix_amplitude()
+{
+	cmatrix_t ret(p, std::vector<std::complex<double> >(p));
+
+	for(size_t i = 0; i < p; ++i)
+	for(size_t j = 0; j < p; ++j)
+	{
+		std::set<std::vector<uint> > t = traj[i][j];
+		
+		if(!t.empty())
+		for(auto it = t.begin(); it != t.end(); ++it)
+		ret[i][j] += traj_to_ampl(*it);
+	}
+
+	return ret;
+}
+
 graph::cmatrix_t graph::get_matrix_truth()
 {
 	cmatrix_t ret(p, std::vector<std::complex<double> >(p));

@@ -137,60 +137,62 @@ int main(int argc, char ** argv)
     double best_dev = __DBL_MAX__;
 
     #pragma omp parallel for schedule(guided)
-    for(size_t i = 0; i < numGraphs; ++i)
+    for(size_t i = 0; i < numGraphs - 1; ++i)
     {
-        bool go;
+        // cout << "Graph #" << i << endl;
+        graph g(p, bs, dc, w);
+        vector<uint> edges(p+2*(bs+dc+w));
+        g.set_target_matrix(targetMatrix);
+
+        #pragma omp critical(graphs)
+        {
+            for(uint i = 0; i < gSize; ++i)
+            gfile >> edges[i];
+        }
+
+        g.set_edges(edges);
+        NLopt(g, 1e-2);
+        const double dev = g.get_deviation();
 
         #pragma omp critical(best)
         {
-            if(best.size() >= 100) go = false;
-            else go = true;
-        }     
-        
-        if(go)
-        {
-            // cout << "Graph #" << i << endl;
-            graph g(p, bs, dc, w);
-            vector<uint> edges(p+2*(bs+dc+w));
-            g.set_target_matrix(targetMatrix);
-    
-            #pragma omp critical(graphs)
+            if(dev < best_dev) 
             {
-                for(uint i = 0; i < gSize; ++i)
-                gfile >> edges[i];
-            }
-    
-            g.set_edges(edges);
-            NLopt(g, 1e-2);
-            const double dev = g.get_deviation();
+                best_dev = dev;
+                cout << endl << "best.size() = " << best.size() << endl;
+                cout << "Graph #" << i << " deviation: " << dev << endl;
+                best.push_back(g);
 
-            #pragma omp critical(best)
-            {
-                if(dev < best_dev) 
+                cout << "Edges:" << endl;
+                for(auto j : best.back().get_edges())
+                cout << j << '\t';
+                cout << endl;
+    
+                cout << "Variables:" << endl << '\t';
+                for(auto j : best.back().get_variables())
+                cout << j << '\t';
+                cout << endl;
+
+                cout << "\tMatrix amplitude:" << endl;
+                graph::cmatrix_t MAmp = best.back().get_matrix_amplitude();
+                for(size_t i = 0; i < p; ++i)
                 {
-                    best_dev = dev;
-                    cout << "best.size() = " << best.size() << endl;
-                    cout << "Graph #" << i << " deviation: " << dev << endl;
-                    best.push_back(g);
-
-                    for(auto j : best.back().get_edges())
-                    cout << j << '\t';
+                    cout << "\t\t";
+                    for(size_t j = 0; j < p; ++j)
+                    cout << MAmp[i][j] << '\t';
+    
                     cout << endl;
-        
-                    cout << '\t';
-                    for(auto j : best.back().get_variables())
-                    cout << j << '\t';
+                }
+    
+                cout << "\tMatrix truth:" << endl;
+                graph::cmatrix_t MTruth = best.back().get_matrix_truth();
+                for(size_t i = 0; i < p; ++i)
+                {
+                    cout << "\t\t";
+                    for(size_t j = 0; j < p; ++j)
+                    cout << MTruth[i][j] << '\t';
+    
                     cout << endl;
-        
-                    graph::cmatrix_t MTruth = best.back().get_matrix_truth();
-                    for(size_t i = 0; i < p; ++i)
-                    {
-                        cout << "\t\t";
-                        for(size_t j = 0; j < p; ++j)
-                        cout << MTruth[i][j] << '\t';
-        
-                        cout << endl;
-                    }
                 }
             }
         }
@@ -204,41 +206,41 @@ int main(int argc, char ** argv)
         }
     }
 
-    // Графы упорядочены по убыванию deviation
-    // Необходимо обратить этот порядок
-    {
-        vector<graph> best_rev(best.size());
-        for(size_t i = 0; i < best.size(); ++i)
-        best_rev[i] = best[best.size() - 1 - i];
+    // // Графы упорядочены по убыванию deviation
+    // // Необходимо обратить этот порядок
+    // {
+    //     vector<graph> best_rev(best.size());
+    //     for(size_t i = 0; i < best.size(); ++i)
+    //     best_rev[i] = best[best.size() - 1 - i];
 
-        swap(best, best_rev);
-    }
+    //     swap(best, best_rev);
+    // }
 
-    // Вывод на экран лучших десяти графов
-    {
-        for(size_t i = 0; i < 10; ++i)
-        {
-            cout << best[i].get_deviation() << '\t';
-            for(auto j : best[i].get_edges())
-            cout << j << '\t';
+    // // Вывод на экран лучших десяти графов
+    // {
+    //     for(size_t i = 0; i < 10; ++i)
+    //     {
+    //         cout << best[i].get_deviation() << '\t';
+    //         for(auto j : best[i].get_edges())
+    //         cout << j << '\t';
 
-            cout << endl;
+    //         cout << endl;
 
-            cout << '\t';
-            for(auto j : best[i].get_variables())
-            cout << j << '\t';
-            cout << endl;
+    //         cout << '\t';
+    //         for(auto j : best[i].get_variables())
+    //         cout << j << '\t';
+    //         cout << endl;
 
-            graph::cmatrix_t MTruth = best[i].get_matrix_truth();
-            for(size_t i = 0; i < p; ++i)
-            {
-                for(size_t j = 0; j < p; ++j)
-                cout << MTruth[i][j] << '\t';
+    //         graph::cmatrix_t MTruth = best[i].get_matrix_truth();
+    //         for(size_t i = 0; i < p; ++i)
+    //         {
+    //             for(size_t j = 0; j < p; ++j)
+    //             cout << MTruth[i][j] << '\t';
 
-                cout << endl;
-            }
-        }
-    }
+    //             cout << endl;
+    //         }
+    //     }
+    // }
 
     return 0;
 }
